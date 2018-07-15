@@ -1,0 +1,4 @@
+package: github.com/CX1ng/jaeger-example
+import:
+- package: github.com/jaegertracing/jaeger-client-go
+- package: github.com/opentracing/opentracing-go

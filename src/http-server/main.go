@@ -16,15 +16,16 @@ const (
 	reportAddr = "127.0.0.1:5775"
 )
 
-func initTracing(cfg *config.Configuration) (opentracing.Span,io.Closer,error) {
+func initTracing(cfg *config.Configuration) (io.Closer,error) {
 	tracer, closer, err := cfg.NewTracer(config.Logger(jaeger.StdLogger),)
 	if err != nil {
-		return nil,nil,err
+		return nil,err
 	}
-	return  tracer.StartSpan("http-server"), closer, nil
+	opentracing.SetGlobalTracer(tracer)
+	return  closer, nil
 }
 
-func initJaegerCfg() (*config.Configuration,error){
+func initJaegerCfg() *config.Configuration{
 	cfg := config.Configuration{
 		ServiceName: "Jaeger Test",
 
@@ -38,22 +39,24 @@ func initJaegerCfg() (*config.Configuration,error){
 			LocalAgentHostPort:  reportAddr,
 		},
 	}
-	return &cfg, nil
+	return &cfg
 }
 
 func main() {
-	cfg, err := initJaegerCfg()
+	cfg := initJaegerCfg()
+	closer,err := initTracing(cfg)
 	if err != nil {
 		panic(err)
 	}
-
+	defer closer.Close()
 	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		span,closer,err := initTracing(cfg)
-		if err != nil {
-			w.Write([]byte(err.Error()))
-			return
+		spanContext,err := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
+		var span opentracing.Span
+		if err == nil {
+			span = opentracing.StartSpan("http-server-ping", opentracing.ChildOf(spanContext))
+		}else{
+			span = opentracing.GlobalTracer().StartSpan("http-server-ping")
 		}
-		defer closer.Close()
 		defer span.Finish()
 		span.SetTag("method", r.Method)
 		span.SetTag("url",r.URL)
@@ -61,13 +64,17 @@ func main() {
 		w.Write([]byte("pong"))
 	})
 	http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request){
-
-		span,closer,err := initTracing(cfg)
+		var span opentracing.Span
+		spanContext,err := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
 		if err != nil {
 			w.Write([]byte(err.Error()))
 			return
 		}
-		defer closer.Close()
+		if spanContext != nil {
+			span = opentracing.StartSpan("http-server-test", opentracing.ChildOf(spanContext))
+		}else{
+			span = opentracing.StartSpan("http-server-test")
+		}
 		defer span.Finish()
 		span.SetTag("url",r.URL)
 		w.Write([]byte("test"))

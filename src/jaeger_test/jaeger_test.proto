@@ -1,0 +1,14 @@
+syntax = "proto3";
+package jaeger_test;
+
+message Req{
+    string msg = 1;
+}
+
+message Resp{
+    string resp = 1;
+}
+
+service Jaeger{
+    rpc SendMsg(Req)returns(Resp);
+}

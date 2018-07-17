@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc"
 
+	. "github.com/CX1ng/jaeger-example/src/common"
 	"github.com/CX1ng/jaeger-example/src/jaeger_test"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go/config"
@@ -21,9 +21,8 @@ const (
 	reportAddr = "127.0.0.1:5775"
 )
 
-func initJaegerCfg() *config.Configuration {
+func initJaegerCfg() (io.Closer, error) {
 	cfg := &config.Configuration{
-		ServiceName: "grpc-server",
 		Sampler: &config.SamplerConfig{
 			Type:  "const",
 			Param: 1,
@@ -34,7 +33,7 @@ func initJaegerCfg() *config.Configuration {
 			BufferFlushInterval: 1 * time.Second,
 		},
 	}
-	return cfg
+	return cfg.InitGlobalTracer("grpc-server")
 }
 
 func initTracer(cfg *config.Configuration) (io.Closer, error) {
@@ -47,8 +46,7 @@ func initTracer(cfg *config.Configuration) (io.Closer, error) {
 }
 
 func main() {
-	cfg := initJaegerCfg()
-	closer, err := initTracer(cfg)
+	closer, err := initJaegerCfg()
 	if err != nil {
 		panic(err)
 	}
@@ -67,26 +65,6 @@ func main() {
 	}
 }
 
-type MapWriterReader struct {
-	metadata.MD
-}
-
-func (m MapWriterReader) Set(key, val string) {
-	key = strings.ToLower(key)
-	m.MD[key] = append(m.MD[key], val)
-}
-
-func (m MapWriterReader) ForeachKey(handler func(key, val string) error) error {
-	for k, vs := range m.MD {
-		for _, v := range vs {
-			if err := handler(k, v); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 type Receiver struct{}
 
 func (r *Receiver) SendMsg(ctx context.Context, msg *jaeger_test.Req) (*jaeger_test.Resp, error) {
@@ -95,7 +73,7 @@ func (r *Receiver) SendMsg(ctx context.Context, msg *jaeger_test.Req) (*jaeger_t
 	if !ok {
 		md = metadata.New(nil)
 	}
-	spanContext, err := opentracing.GlobalTracer().Extract(opentracing.TextMap, MapWriterReader{md})
+	spanContext, err := opentracing.GlobalTracer().Extract(opentracing.TextMap, MdWriterReader{md})
 	if err != nil && err != opentracing.ErrSpanContextNotFound {
 		return &jaeger_test.Resp{}, err
 	} else if err != nil && err == opentracing.ErrSpanContextNotFound {

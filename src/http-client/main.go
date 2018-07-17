@@ -13,12 +13,11 @@ import (
 
 const (
 	reportAddr  = "127.0.0.1:5775"
-	requestAddr = "http://127.0.0.1:8888/ping"
+	requestAddr = "http://127.0.0.1:8888/grpc?msg=beijing"
 )
 
-func InitJaegerCfg() *config.Configuration {
+func InitJaegerCfg() (io.Closer, error) {
 	cfg := &config.Configuration{
-		ServiceName: "Jaeger HTTP Test",
 		Sampler: &config.SamplerConfig{
 			Type:  "const",
 			Param: 1,
@@ -29,26 +28,16 @@ func InitJaegerCfg() *config.Configuration {
 			LocalAgentHostPort:  reportAddr,
 		},
 	}
-	return cfg
-}
-
-func InitTracer(cfg *config.Configuration) (opentracing.Span, io.Closer, error) {
-	tracer, closer, err := cfg.NewTracer()
-	if err != nil {
-		return nil, nil, err
-	}
-	opentracing.SetGlobalTracer(tracer)
-	span := opentracing.StartSpan("http-client")
-	return span, closer, err
+	return cfg.InitGlobalTracer("Jaeger Http Test")
 }
 
 func main() {
-	cfg := InitJaegerCfg()
-	span, closer, err := InitTracer(cfg)
+	closer, err := InitJaegerCfg()
 	if err != nil {
 		panic(err)
 	}
 	defer closer.Close()
+	span := opentracing.GlobalTracer().StartSpan("request")
 	defer span.Finish()
 
 	header := http.Header{}

@@ -52,12 +52,21 @@ func main() {
 	}
 	defer closer.Close()
 
-	// TODO: 拦截器
 	listener, err := net.Listen("tcp", localAddr)
 	if err != nil {
 		panic(err)
 	}
-	server := grpc.NewServer()
+	var opts []grpc.ServerOption
+	// 拦截器
+	var interceptor grpc.UnaryServerInterceptor
+	interceptor = func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,handler grpc.UnaryHandler)(resp interface{}, err error){
+		if err := tracing(ctx);err != nil {
+			return nil,err
+		}
+		return handler(ctx, req)
+	}
+	opts = append(opts, grpc.UnaryInterceptor(interceptor))
+	server := grpc.NewServer(opts...)
 	jaeger_test.RegisterJaegerServer(server, &Receiver{})
 	fmt.Printf("grpc listen on %s\n", localAddr)
 	if err := server.Serve(listener); err != nil {
@@ -68,6 +77,16 @@ func main() {
 type Receiver struct{}
 
 func (r *Receiver) SendMsg(ctx context.Context, msg *jaeger_test.Req) (*jaeger_test.Resp, error) {
+	req := msg.Msg
+	reply := "hello " + req
+
+	resp := &jaeger_test.Resp{
+		Resp: reply,
+	}
+	return resp, nil
+}
+
+func tracing(ctx context.Context)error{
 	var span opentracing.Span
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -75,21 +94,13 @@ func (r *Receiver) SendMsg(ctx context.Context, msg *jaeger_test.Req) (*jaeger_t
 	}
 	spanContext, err := opentracing.GlobalTracer().Extract(opentracing.TextMap, MdWriterReader{md})
 	if err != nil && err != opentracing.ErrSpanContextNotFound {
-		return &jaeger_test.Resp{}, err
+		return err
 	} else if err != nil && err == opentracing.ErrSpanContextNotFound {
 		span = opentracing.GlobalTracer().StartSpan("grpc-server")
 	} else {
 		span = opentracing.GlobalTracer().StartSpan("grpc-server", opentracing.ChildOf(spanContext))
 	}
 	defer span.Finish()
-	req := msg.Msg
-	reply := "hello " + req
-	span.SetTag("method", "SendMsg")
-	span.SetTag("req", req)
-	span.SetTag("resp", reply)
-
-	resp := &jaeger_test.Resp{
-		Resp: reply,
-	}
-	return resp, nil
+	span.LogKV("event","grpc","timestamp",time.Now().Unix())
+	return nil
 }

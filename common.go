@@ -1,4 +1,4 @@
-package common
+package jaeger_example
 
 import (
 	"strings"

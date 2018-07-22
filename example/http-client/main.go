@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"time"
 
+	. "github.com/CX1ng/jaeger-example"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go/config"
 )
@@ -16,33 +16,18 @@ const (
 	requestAddr = "http://127.0.0.1:8888/grpc?msg=beijing"
 )
 
-func InitJaegerCfg() (io.Closer, error) {
-	cfg := &config.Configuration{
-		Sampler: &config.SamplerConfig{
-			Type:  "const",
-			Param: 1,
-		},
-		Reporter: &config.ReporterConfig{
-			LogSpans:            true,
-			BufferFlushInterval: 1 * time.Second,
-			LocalAgentHostPort:  reportAddr,
-		},
-	}
-	return cfg.InitGlobalTracer("Jaeger Http Test")
-}
-
 func main() {
-	closer, err := InitJaegerCfg()
+	sampleCfg := &config.SamplerConfig{Type: "const", Param: 1}
+	reporterCfg := &config.ReporterConfig{BufferFlushInterval: 1 * time.Second, LogSpans: true, LocalAgentHostPort: reportAddr}
+	tracer, err := InitTracerWithJaegerCfg("http-client", sampleCfg, reporterCfg)
 	if err != nil {
 		panic(err)
 	}
-	defer closer.Close()
-	span := opentracing.GlobalTracer().StartSpan("request")
-	defer span.Finish()
-
+	defer tracer.Close()
 	header := http.Header{}
-	span.SetTag("method", "Get")
-	opentracing.GlobalTracer().Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(header))
+	span := tracer.Tracer.StartSpan("server-client")
+	defer span.Finish()
+	tracer.Tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(header))
 
 	client := http.Client{}
 	req, err := http.NewRequest("Get", requestAddr, nil)

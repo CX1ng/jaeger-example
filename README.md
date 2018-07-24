@@ -4,3 +4,11 @@
 > docker run -d -p 5775:5775/udp -p 16686:16686 jaegertracing/all-in-one:latest
 
 访问[http://127.0.0.1:16686/](http://127.0.0.1:16686/)可以查看结果
+
+### TODO List:  
+- [x] http Middleware  
+- [x] grpc UnaryServerInterceptor  
+- [x] Inject/Extract With TextMap  
+- [x] Inject/Extract With HttpHeader  
+- [ ] SQL Tracing  
+- [ ] Redis Tracing  
